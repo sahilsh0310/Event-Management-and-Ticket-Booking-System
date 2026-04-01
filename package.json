@@ -1,11 +1,11 @@
 {
   "name": "event-management-and-ticket-booking-system",
   "version": "1.0.0",
-  "description": "",
-  "main": "server.js",
+  "description": "Browser-ready frontend for event management and ticket booking.",
+  "main": "index.html",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "echo \"Open index.html in a browser or serve this folder with any static host.\"",
+    "test": "echo \"No automated tests configured yet.\""
   },
   "repository": {
     "type": "git",
@@ -14,13 +14,8 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/sahilsh0310/Bank_Payroll_System_Bridgelabs/issues"
   },
-  "homepage": "https://github.com/sahilsh0310/Bank_Payroll_System_Bridgelabs#readme",
-  "dependencies": {
-    "body-parser": "^2.2.2",
-    "express": "^5.2.1"
-  }
+  "homepage": "https://github.com/sahilsh0310/Bank_Payroll_System_Bridgelabs#readme"
 }

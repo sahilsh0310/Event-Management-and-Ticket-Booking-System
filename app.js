@@ -1,5 +1,115 @@
 import * as THREE from "https://unpkg.com/three@0.164.1/build/three.module.js";
 
+const APP_CONFIG = {
+  mode: window.TICKETMINT_CONFIG?.mode || "local",
+  apiBaseUrl: (window.TICKETMINT_CONFIG?.apiBaseUrl || "/api").replace(/\/$/, "")
+};
+
+const STORAGE_KEYS = {
+  events: "ticketmint.events",
+  bookings: "ticketmint.bookings",
+  currentUser: "ticketmint.currentUser"
+};
+
+const SEED_EVENTS = [
+  {
+    id: 1,
+    name: "Skyline Soundstorm",
+    image: "https://images.unsplash.com/photo-1507874457470-272b3c8d8ee2",
+    category: "Music",
+    city: "Mumbai",
+    venue: "NSCI Dome, Worli",
+    date: "2026-04-19",
+    time: "7:30 PM",
+    price: 1899,
+    capacity: 320,
+    booked: 214,
+    featured: true,
+    description: "An electric night under the city lights with headline DJs, immersive visuals, and room to dance till late.",
+    perks: ["Express entry lane", "VIP viewing deck", "Complimentary mocktail"]
+  },
+  {
+    id: 2,
+    name: "CodeWave India Summit",
+    image: "https://images.unsplash.com/photo-1551836022-d5d88e9218df",
+    category: "Tech",
+    city: "Bengaluru",
+    venue: "BIEC Convention Hall",
+    date: "2026-04-12",
+    time: "9:30 AM",
+    price: 2499,
+    capacity: 450,
+    booked: 286,
+    featured: true,
+    description: "A full-day gathering for builders, founders, and curious minds with keynotes, deep-dive sessions, and great hallway conversations.",
+    perks: ["Conference pass", "Lunch buffet", "Startup networking zone"]
+  },
+  {
+    id: 3,
+    name: "Midnight Laugh Arena",
+    image: "https://images.unsplash.com/photo-1511578314322-379afb476865",
+    category: "Comedy",
+    city: "Delhi",
+    venue: "Talkatora Indoor Arena",
+    date: "2026-04-26",
+    time: "8:00 PM",
+    price: 1199,
+    capacity: 280,
+    booked: 167,
+    featured: false,
+    description: "A feel-good stand-up night packed with touring comics, crowd work, and the kind of jokes people keep repeating on the ride home.",
+    perks: ["Reserved seating", "Merchandise voucher", "Priority gate access"]
+  },
+  {
+    id: 4,
+    name: "Royal Street Food Fest",
+    image: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0",
+    category: "Food",
+    city: "Pune",
+    venue: "Raja Bahadur Grounds",
+    date: "2026-04-14",
+    time: "1:00 PM",
+    price: 699,
+    capacity: 520,
+    booked: 318,
+    featured: false,
+    description: "A lively day out for food lovers with signature stalls, dessert corners, chef pop-ups, and music in the background.",
+    perks: ["Tasting credits", "Fast-track wristband", "Chef stage access"]
+  },
+  {
+    id: 5,
+    name: "Monsoon Derby Finale",
+    image: "https://images.unsplash.com/photo-1547347298-4074fc3086f0",
+    category: "Sports",
+    city: "Hyderabad",
+    venue: "Gachibowli Stadium",
+    date: "2026-04-22",
+    time: "6:30 PM",
+    price: 1599,
+    capacity: 600,
+    booked: 471,
+    featured: false,
+    description: "A big match-night atmosphere with loud crowds, floodlights, fan zones, and the kind of finish everyone talks about after.",
+    perks: ["Stadium access", "Team fan kit", "Premium concourse entry"]
+  },
+  {
+    id: 6,
+    name: "Moonlit Cinema Concert",
+    image: "https://images.unsplash.com/photo-1492684223066-81342ee5ff30",
+    category: "Entertainment",
+    city: "Jaipur",
+    venue: "Amber Open Air Theatre",
+    date: "2026-04-30",
+    time: "7:15 PM",
+    price: 1399,
+    capacity: 260,
+    booked: 148,
+    featured: false,
+    description: "A beautiful open-air evening where a live orchestra, cinema moments, and a heritage venue come together in one memorable show.",
+    perks: ["Assigned seats", "Souvenir pass", "Early gate access"]
+  }
+];
+
 const state = {
   events: [],
   selectedCategory: "All",
@@ -43,14 +153,219 @@ const elements = {
   featuredPrice: document.getElementById("featuredPrice")
 };
 
-async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function toView(event) {
+  return {
+    ...event,
+    seatsLeft: Math.max(event.capacity - event.booked, 0),
+    soldPercent: Math.round((event.booked / event.capacity) * 100)
+  };
+}
+
+function getStoredJson(key, fallbackValue) {
+  const rawValue = localStorage.getItem(key);
+  if (!rawValue) {
+    return clone(fallbackValue);
+  }
+
+  try {
+    return JSON.parse(rawValue);
+  } catch (error) {
+    return clone(fallbackValue);
+  }
+}
+
+function setStoredJson(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function ensureLocalStore() {
+  if (!localStorage.getItem(STORAGE_KEYS.events)) {
+    setStoredJson(STORAGE_KEYS.events, SEED_EVENTS);
+  }
+
+  if (!localStorage.getItem(STORAGE_KEYS.bookings)) {
+    setStoredJson(STORAGE_KEYS.bookings, []);
+  }
+}
+
+function getLocalEvents() {
+  ensureLocalStore();
+  return getStoredJson(STORAGE_KEYS.events, SEED_EVENTS);
+}
+
+function saveLocalEvents(events) {
+  setStoredJson(STORAGE_KEYS.events, events);
+}
+
+function getLocalBookings() {
+  ensureLocalStore();
+  return getStoredJson(STORAGE_KEYS.bookings, []);
+}
+
+function saveLocalBookings(bookings) {
+  setStoredJson(STORAGE_KEYS.bookings, bookings);
+}
+
+function getStoredCurrentUser() {
+  const user = getStoredJson(STORAGE_KEYS.currentUser, null);
+  return user && user.email && user.name ? user : null;
+}
+
+function setStoredCurrentUser(user) {
+  if (!user) {
+    localStorage.removeItem(STORAGE_KEYS.currentUser);
+    return;
+  }
+
+  setStoredJson(STORAGE_KEYS.currentUser, user);
+}
+
+function computeStats(events, bookings) {
+  return {
+    eventCount: events.length,
+    cityCount: new Set(events.map(event => event.city)).size,
+    totalBookings: bookings.reduce((total, booking) => total + booking.quantity, 0),
+    totalRevenue: bookings.reduce((total, booking) => total + booking.total, 0),
+    featuredEvent: events.find(event => event.featured) || events[0] || null
+  };
+}
+
+async function requestJson(path, options = {}) {
+  const response = await fetch(`${APP_CONFIG.apiBaseUrl}${path}`, options);
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.message || "Request failed");
   }
   return data;
 }
+
+const localApi = {
+  async getEvents() {
+    return { events: getLocalEvents().map(toView) };
+  },
+  async getStats() {
+    return computeStats(getLocalEvents().map(toView), getLocalBookings());
+  },
+  async getBookings(email) {
+    if (!email) {
+      throw new Error("Please share an email so we can load your bookings.");
+    }
+
+    const bookings = getLocalBookings().filter(item => item.email === email.toLowerCase());
+    return { bookings };
+  },
+  async login({ email, name }) {
+    const normalizedEmail = `${email || ""}`.trim().toLowerCase();
+    const normalizedName = `${name || ""}`.trim();
+
+    if (!normalizedEmail || !normalizedName) {
+      throw new Error("Please enter both your name and email.");
+    }
+
+    const user = { email: normalizedEmail, name: normalizedName };
+    setStoredCurrentUser(user);
+
+    return {
+      user,
+      message: `You're all set, ${normalizedName}.`
+    };
+  },
+  async createBooking({ eventId, quantity, email, name }) {
+    const normalizedEmail = `${email || ""}`.trim().toLowerCase();
+    const normalizedName = `${name || ""}`.trim();
+    const ticketCount = Number(quantity);
+
+    if (!normalizedEmail || !normalizedName) {
+      throw new Error("We need your name and email before we can reserve tickets.");
+    }
+
+    if (!Number.isInteger(ticketCount) || ticketCount < 1) {
+      throw new Error("Choose at least one ticket to continue.");
+    }
+
+    const events = getLocalEvents();
+    const eventIndex = events.findIndex(item => item.id === Number(eventId));
+
+    if (eventIndex === -1) {
+      throw new Error("We couldn't find that event.");
+    }
+
+    const targetEvent = events[eventIndex];
+    const seatsLeft = targetEvent.capacity - targetEvent.booked;
+
+    if (ticketCount > seatsLeft) {
+      throw new Error(`Only ${seatsLeft} seats are left for ${targetEvent.name} right now.`);
+    }
+
+    targetEvent.booked += ticketCount;
+    saveLocalEvents(events);
+
+    const bookings = getLocalBookings();
+    const subtotal = targetEvent.price * ticketCount;
+    const fees = ticketCount * 49;
+    const nextId = bookings.length
+      ? Math.max(...bookings.map(item => item.id)) + 1
+      : 1001;
+
+    const booking = {
+      id: nextId,
+      eventId: targetEvent.id,
+      eventName: targetEvent.name,
+      city: targetEvent.city,
+      venue: targetEvent.venue,
+      date: targetEvent.date,
+      time: targetEvent.time,
+      quantity: ticketCount,
+      email: normalizedEmail,
+      name: normalizedName,
+      subtotal,
+      fees,
+      total: subtotal + fees,
+      createdAt: new Date().toISOString()
+    };
+
+    bookings.unshift(booking);
+    saveLocalBookings(bookings);
+
+    return {
+      message: "Your booking is confirmed",
+      booking,
+      event: toView(targetEvent)
+    };
+  }
+};
+
+const serverApi = {
+  async getEvents() {
+    return requestJson("/events");
+  },
+  async getStats() {
+    return requestJson("/stats");
+  },
+  async getBookings(email) {
+    return requestJson(`/bookings?email=${encodeURIComponent(email)}`);
+  },
+  async login(payload) {
+    return requestJson("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  },
+  async createBooking(payload) {
+    return requestJson("/bookings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+  }
+};
+
+const platformApi = APP_CONFIG.mode === "api" ? serverApi : localApi;
 
 function showToast(message) {
   elements.toast.textContent = message;
@@ -83,6 +398,12 @@ function formatDate(dateString) {
 
 function getSelectedEvent() {
   return state.events.find(event => event.id === state.selectedEventId) || null;
+}
+
+function updateLoginButton() {
+  elements.loginBtn.lastElementChild.textContent = state.currentUser
+    ? state.currentUser.name.split(" ")[0]
+    : "Sign In";
 }
 
 function buildFilters() {
@@ -132,7 +453,7 @@ function renderEvents() {
   const events = getFilteredEvents();
 
   if (!events.length) {
-    elements.eventList.innerHTML = `<div class="empty-state">Nothing matches that search just yet. Try a different city, category, or keyword.</div>`;
+    elements.eventList.innerHTML = "<div class=\"empty-state\">Nothing matches that search just yet. Try a different city, category, or keyword.</div>";
     refreshThreeButtons();
     return;
   }
@@ -277,14 +598,10 @@ async function handleLogin() {
   }
 
   try {
-    const data = await requestJson("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, name })
-    });
-
+    const data = await platformApi.login({ email, name });
     state.currentUser = data.user;
-    elements.loginBtn.lastElementChild.textContent = data.user.name.split(" ")[0];
+    setStoredCurrentUser(state.currentUser);
+    updateLoginButton();
     closeLoginModal();
     await loadBookings();
     showToast(data.message);
@@ -295,8 +612,8 @@ async function handleLogin() {
 
 async function loadEventsAndStats() {
   const [eventsData, statsData] = await Promise.all([
-    requestJson("/api/events"),
-    requestJson("/api/stats")
+    platformApi.getEvents(),
+    platformApi.getStats()
   ]);
 
   state.events = eventsData.events;
@@ -314,7 +631,7 @@ async function loadBookings() {
   }
 
   try {
-    const data = await requestJson(`/api/bookings?email=${encodeURIComponent(state.currentUser.email)}`);
+    const data = await platformApi.getBookings(state.currentUser.email);
     state.bookings = data.bookings;
     renderBookingHistory();
   } catch (error) {
@@ -338,15 +655,11 @@ async function confirmBooking() {
   const quantity = Number(elements.ticketQuantity.value);
 
   try {
-    const data = await requestJson("/api/bookings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        eventId: event.id,
-        quantity,
-        email: state.currentUser.email,
-        name: state.currentUser.name
-      })
+    const data = await platformApi.createBooking({
+      eventId: event.id,
+      quantity,
+      email: state.currentUser.email,
+      name: state.currentUser.name
     });
 
     state.events = state.events.map(item => item.id === data.event.id ? data.event : item);
@@ -360,7 +673,7 @@ async function confirmBooking() {
 }
 
 async function refreshStats() {
-  state.stats = await requestJson("/api/stats");
+  state.stats = await platformApi.getStats();
   renderStats();
 }
 
@@ -390,7 +703,13 @@ function attachEvents() {
 
   elements.ticketQuantity.addEventListener("change", updateSummary);
   elements.confirmBookingBtn.addEventListener("click", confirmBooking);
-  elements.loginBtn.addEventListener("click", openLoginModal);
+  elements.loginBtn.addEventListener("click", () => {
+    if (state.currentUser) {
+      showToast(`Signed in as ${state.currentUser.name}.`);
+      return;
+    }
+    openLoginModal();
+  });
   elements.closeModalBtn.addEventListener("click", closeLoginModal);
   elements.submitLoginBtn.addEventListener("click", handleLogin);
 
@@ -436,11 +755,13 @@ function quickBook(id) {
 
 async function bootstrap() {
   try {
+    state.currentUser = getStoredCurrentUser();
+    updateLoginButton();
     await loadEventsAndStats();
     buildFilters();
     renderEvents();
     renderStats();
-    renderBookingHistory();
+    await loadBookings();
     updateSummary();
   } catch (error) {
     showToast("We couldn't load the events right now. Please try again in a moment.");
